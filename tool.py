@@ -128,13 +128,17 @@ def chuan_bi_du_lieu_tho(ng_bytes, cp_bytes, stt_khu):
             ds_ec = [r['tbec'] for r in dong_trong_ngay if r['tbec'] > 0]
             ds_ph = [r['tbph'] for r in dong_trong_ngay if r['tbph'] > 0]
             
+            # Khắc phục lỗi chia cho 0 nếu mảng rỗng
+            tb_ec_val = round(sum(ds_ec)/len(ds_ec), 2) if ds_ec else 0.0
+            tb_ph_val = round(sum(ds_ph)/len(ds_ph), 2) if ds_ph else 0.0
+            
             ket_qua_ngay_tho.append({
                 'ngay': ngay,
                 'nhan_ngay': f"Ngày {thu_tu} ({ngay.strftime('%d/%m/%Y')})",
                 'so_lan': so_lan,
                 'phut': round((giay_tong or 0)/60, 1),
-                'tbec': round(sum(ds_ec)/len(ds_ec), 2) if ds_ec else 0.0,
-                'tbph': round(sum(ds_ph)/len(ds_ph), 2) if ds_ph else 0.0,
+                'tbec': tb_ec_val,
+                'tbph': tb_ph_val,
                 'ec_yc': dict_ec_yc.get(ngay, 0.0)
             })
         du_lieu_tong_hop.append(ket_qua_ngay_tho)
@@ -308,22 +312,28 @@ def xuat_bao_cao_streamlit(du_lieu_vu, stt_vu, danh_sach_ten_chi_so_chon):
             'EC Yêu cầu': 'EC Yêu Cầu'
         }
         
-        danh_sach_cot_to_dam = [map_cot_hien_thi[ten] for ten in danh_sach_ten_chi_so_chon]
+        danh_sach_cot_to_dam = [map_cot_hien_thi[ten] for ten in danh_sach_ten_chi_so_chon if ten in map_cot_hien_thi]
 
+        # =========================================================
+        # SỬA ĐÚNG KHÚC NÀY: TỐI ƯU HIGHLIGHT VECTOR KHÔNG DÙNG VÒNG LẶP FOR THEO DÒNG
+        # =========================================================
         def highlight_table(df):
             df_style = pd.DataFrame('', index=df.index, columns=df.columns)
             css_dong_cuoi = 'font-weight: bold; background-color: #ecf0f1; color: #2c3e50; font-size: 18px !important;'
             df_style.iloc[-1, :] = css_dong_cuoi
             
+            css_cot_highlight = 'font-weight: bold; color: #d35400; background-color: #fef9e7;'
+            css_giao_cat = 'font-weight: bold; background-color: #ecf0f1; color: #d35400; font-size: 18px !important;'
+            
             for cot in danh_sach_cot_to_dam:
                 if cot in df_style.columns:
-                    for idx in range(len(df_style) - 1): 
-                        df_style.loc[idx, cot] = 'font-weight: bold; color: #d35400; background-color: #fef9e7;'
+                    col_idx = df_style.columns.get_loc(cot)
+                    # Nhuộm màu nguyên cột bằng phương pháp ma trận (Tốc độ ánh sáng, không treo)
+                    df_style.iloc[:-1, col_idx] = css_cot_highlight
+                    df_style.iloc[-1, col_idx] = css_giao_cat
                     
-                    css_giao_cat = 'font-weight: bold; background-color: #ecf0f1; color: #d35400; font-size: 18px !important;'
-                    df_style.iloc[-1, df_style.columns.get_loc(cot)] = css_giao_cat
-                
             return df_style
+        # =========================================================
 
         format_mapping = {
             'Số Lần Tưới': lambda x: f"{x:g}" if isinstance(x, (int, float)) else x,
