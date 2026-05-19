@@ -128,17 +128,13 @@ def chuan_bi_du_lieu_tho(ng_bytes, cp_bytes, stt_khu):
             ds_ec = [r['tbec'] for r in dong_trong_ngay if r['tbec'] > 0]
             ds_ph = [r['tbph'] for r in dong_trong_ngay if r['tbph'] > 0]
             
-            # Khắc phục lỗi chia cho 0 nếu mảng rỗng
-            tb_ec_val = round(sum(ds_ec)/len(ds_ec), 2) if ds_ec else 0.0
-            tb_ph_val = round(sum(ds_ph)/len(ds_ph), 2) if ds_ph else 0.0
-            
             ket_qua_ngay_tho.append({
                 'ngay': ngay,
                 'nhan_ngay': f"Ngày {thu_tu} ({ngay.strftime('%d/%m/%Y')})",
                 'so_lan': so_lan,
                 'phut': round((giay_tong or 0)/60, 1),
-                'tbec': tb_ec_val,
-                'tbph': tb_ph_val,
+                'tbec': round(sum(ds_ec)/len(ds_ec), 2) if ds_ec else 0.0,
+                'tbph': round(sum(ds_ph)/len(ds_ph), 2) if ds_ph else 0.0,
                 'ec_yc': dict_ec_yc.get(ngay, 0.0)
             })
         du_lieu_tong_hop.append(ket_qua_ngay_tho)
@@ -226,7 +222,7 @@ def xuat_bao_cao_streamlit(du_lieu_vu, stt_vu, danh_sach_ten_chi_so_chon):
         shared_xaxes=True, 
         vertical_spacing=0.08,
         row_heights=[0.60, 0.40], 
-        subplot_titles=("<b>Biến động Thời Gian Tưới & EC</b>", f"<b>Phân tách GĐ (Biểu đồ hiển thị: {ten_chi_so_hien_thi_chinh})</b>"),
+        subplot_titles=("<b>Biến động Thời Gian Tưới & EC Toàn Vụ</b>", f"<b>Phân tách GĐ (Biểu đồ hiển thị: {ten_chi_so_hien_thi_chinh})</b>"),
         specs=[[{"secondary_y": True}], [{"secondary_y": False}]]
     )
 
@@ -243,7 +239,7 @@ def xuat_bao_cao_streamlit(du_lieu_vu, stt_vu, danh_sach_ten_chi_so_chon):
         fig.add_trace(go.Bar(x=x_gd, y=y_gd, name=f'GĐ {gd} : {len(x_gd)} ngày', marker_color=mau_sac_gd[i % len(mau_sac_gd)]), row=2, col=1)
 
     fig.update_layout(
-        height=900, 
+        height=750, 
         template="plotly_white", 
         hovermode="x unified", 
         margin=dict(l=30, r=30, t=60, b=20), 
@@ -252,7 +248,6 @@ def xuat_bao_cao_streamlit(du_lieu_vu, stt_vu, danh_sach_ten_chi_so_chon):
         font=dict(family="Arial, sans-serif", size=13, color="#2c3e50") 
     )
     
-    # Xóa toàn bộ đường kẻ lưới (showgrid=False)
     fig.update_xaxes(tickfont=dict(color="black", size=12), showgrid=False)
     fig.update_yaxes(title_text="<b>Tổng phút</b>", secondary_y=False, row=1, col=1, showgrid=False, tickfont=dict(color="black"))
     fig.update_yaxes(title_text="<b>Chỉ số EC</b>", secondary_y=True, row=1, col=1, showgrid=False, tickfont=dict(color="black"))
@@ -260,6 +255,10 @@ def xuat_bao_cao_streamlit(du_lieu_vu, stt_vu, danh_sach_ten_chi_so_chon):
 
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
+    # ---------------------------------------------------------
+    # PHẦN THÊM MỚI/CẬP NHẬT: VẼ BIỂU ĐỒ RIÊNG CHO TỪNG GIAI ĐOẠN
+    # ---------------------------------------------------------
+    st.markdown("---")
     st.markdown("#### TỔNG KẾT CHI TIẾT THEO GIAI ĐOẠN")
     
     chon_gd = st.radio(
@@ -273,6 +272,59 @@ def xuat_bao_cao_streamlit(du_lieu_vu, stt_vu, danh_sach_ten_chi_so_chon):
     data_gd = [d for d in du_lieu_vu if d['giai_doan'] == chon_gd]
     
     if data_gd:
+        # 1. Khởi tạo biểu đồ riêng cho Giai đoạn đang chọn
+        nhan_gd = [d['nhan_ngay'] for d in data_gd]
+        phut_gd = [d['phut'] for d in data_gd]
+        lan_gd = [d['so_lan'] for d in data_gd]
+        tbec_gd = [d['tbec'] if d['tbec'] > 0 else None for d in data_gd]
+        ec_yc_gd = [d['ec_yc'] if d['ec_yc'] > 0 else None for d in data_gd]
+
+        fig_gd = make_subplots(specs=[[{"secondary_y": True}]])
+        
+        # Cột Số phút tưới
+        fig_gd.add_trace(go.Bar(
+            x=nhan_gd, y=phut_gd, 
+            name='Số Phút Tưới', 
+            marker_color='#2ecc71', opacity=0.8
+        ), secondary_y=False)
+        
+        # Đường Số lần tưới
+        fig_gd.add_trace(go.Scatter(
+            x=nhan_gd, y=lan_gd, 
+            name='Số Lần Tưới', mode='lines+markers',
+            line=dict(color='#f1c40f', width=2, dash='dash')
+        ), secondary_y=False)
+
+        # Đường TBEC Thực tế
+        fig_gd.add_trace(go.Scatter(
+            x=nhan_gd, y=tbec_gd, 
+            name='TBEC Thực tế', mode='lines+markers',
+            line=dict(color='#e74c3c', width=3)
+        ), secondary_y=True)
+        
+        # Đường EC Yêu cầu
+        fig_gd.add_trace(go.Scatter(
+            x=nhan_gd, y=ec_yc_gd, 
+            name='EC Yêu Cầu', mode='lines',
+            line=dict(color='#9b59b6', width=2, dash='dot')
+        ), secondary_y=True)
+
+        fig_gd.update_layout(
+            title=f"<b>Biểu đồ Chi tiết Giai đoạn {chon_gd} (Thời gian tưới, Số lần & Chỉ số EC)</b>",
+            height=400,
+            template="plotly_white",
+            hovermode="x unified",
+            margin=dict(l=30, r=30, t=50, b=20),
+            legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1)
+        )
+        fig_gd.update_xaxes(showgrid=False)
+        fig_gd.update_yaxes(title_text="<b>Thời gian (Phút) / Số Lần</b>", secondary_y=False, showgrid=False)
+        fig_gd.update_yaxes(title_text="<b>Chỉ số EC</b>", secondary_y=True, showgrid=False)
+
+        # Hiển thị biểu đồ giai đoạn lên Streamlit
+        st.plotly_chart(fig_gd, use_container_width=True, config={'displayModeBar': False})
+
+        # 2. Xử lý logic hiển thị Bảng dữ liệu tương ứng bên dưới biểu đồ giai đoạn
         df_gd = pd.DataFrame(data_gd)
         df_gd = df_gd[['ngay', 'nhan_ngay', 'so_lan', 'phut', 'tbec', 'tbph', 'ec_yc', 'giai_doan']]
         df_gd.rename(columns={
@@ -312,28 +364,22 @@ def xuat_bao_cao_streamlit(du_lieu_vu, stt_vu, danh_sach_ten_chi_so_chon):
             'EC Yêu cầu': 'EC Yêu Cầu'
         }
         
-        danh_sach_cot_to_dam = [map_cot_hien_thi[ten] for ten in danh_sach_ten_chi_so_chon if ten in map_cot_hien_thi]
+        danh_sach_cot_to_dam = [map_cot_hien_thi[ten] for ten in danh_sach_ten_chi_so_chon]
 
-        # =========================================================
-        # SỬA ĐÚNG KHÚC NÀY: TỐI ƯU HIGHLIGHT VECTOR KHÔNG DÙNG VÒNG LẶP FOR THEO DÒNG
-        # =========================================================
         def highlight_table(df):
             df_style = pd.DataFrame('', index=df.index, columns=df.columns)
             css_dong_cuoi = 'font-weight: bold; background-color: #ecf0f1; color: #2c3e50; font-size: 18px !important;'
             df_style.iloc[-1, :] = css_dong_cuoi
             
-            css_cot_highlight = 'font-weight: bold; color: #d35400; background-color: #fef9e7;'
-            css_giao_cat = 'font-weight: bold; background-color: #ecf0f1; color: #d35400; font-size: 18px !important;'
-            
             for cot in danh_sach_cot_to_dam:
                 if cot in df_style.columns:
-                    col_idx = df_style.columns.get_loc(cot)
-                    # Nhuộm màu nguyên cột bằng phương pháp ma trận (Tốc độ ánh sáng, không treo)
-                    df_style.iloc[:-1, col_idx] = css_cot_highlight
-                    df_style.iloc[-1, col_idx] = css_giao_cat
+                    for idx in range(len(df_style) - 1): 
+                        df_style.loc[idx, cot] = 'font-weight: bold; color: #d35400; background-color: #fef9e7;'
                     
+                    css_giao_cat = 'font-weight: bold; background-color: #ecf0f1; color: #d35400; font-size: 18px !important;'
+                    df_style.iloc[-1, df_style.columns.get_loc(cot)] = css_giao_cat
+                
             return df_style
-        # =========================================================
 
         format_mapping = {
             'Số Lần Tưới': lambda x: f"{x:g}" if isinstance(x, (int, float)) else x,
@@ -368,7 +414,6 @@ with st.sidebar:
     
     st.markdown("**Phân chia Giai đoạn kết hợp (AND) theo:**")
     
-    # NÂNG CẤP: Dùng Checkbox thay vì Multiselect
     ten_chi_so_chon = []
     for ten_chi_so in MAP_CHI_SO.keys():
         mac_dinh = True if ten_chi_so in ['EC Yêu cầu', 'TBEC Thực tế'] else False
