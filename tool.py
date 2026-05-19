@@ -18,7 +18,8 @@ TY_LE_CHIA = 100.0
 MAP_CHI_SO = {
     'Tổng thời gian tưới (Phút)': 'phut',
     'TBEC Thực tế': 'tbec',
-    'EC Yêu cầu': 'ec_yc'
+    'EC Yêu cầu': 'ec_yc',
+    'Chỉ số pH thực tế': 'tbph'  # Thêm ánh xạ cho pH
 }
 
 # ==========================================
@@ -66,7 +67,7 @@ def lay_du_lieu_ec_yeu_cau(du_lieu, stt_khu):
                 except: pass
     return {n: round(sum(v)/len(v), 2) for n, v in ket_qua.items()}
 
-@st.cache_data(show_spinner="Đang xử lý và bóc tách dữ liệu thô (Chỉ chạy 1 lần duy nhất)...")
+@st.cache_data(show_spinner="Đang xử lý dữ liệu thô...")
 def chuan_bi_du_lieu_tho(ng_bytes, cp_bytes, stt_khu):
     du_lieu_ng = json_decode_helper(ng_bytes)
     du_lieu_cp = json_decode_helper(cp_bytes)
@@ -142,7 +143,7 @@ def chuan_bi_du_lieu_tho(ng_bytes, cp_bytes, stt_khu):
     return du_lieu_tong_hop
 
 # ==========================================
-# THUẬT TOÁN ĐỘNG (ĐÃ NÂNG CẤP XỬ LÝ AND ĐA BIẾN)
+# THUẬT TOÁN ĐỘNG
 # ==========================================
 def tinh_toan_giai_doan_dong(danh_sach_ngay, danh_sach_khoa, dict_sai_so):
     if not danh_sach_ngay or not danh_sach_khoa: return danh_sach_ngay
@@ -199,9 +200,7 @@ def xuat_bao_cao_streamlit(du_lieu_vu, stt_vu, danh_sach_ten_chi_so_chon):
     ds_ec_yc = [d['ec_yc'] if d['ec_yc'] > 0 else None for d in du_lieu_vu]
     ds_giai_doan = [d['giai_doan'] for d in du_lieu_vu]
 
-    # ---------------------------------------------------------
-    # KHUNG THÔNG SỐ TỔNG QUAN (Metric Dashboard)
-    # ---------------------------------------------------------
+    # KHUNG THÔNG SỐ TỔNG QUAN
     tong_phut = sum(ds_phut)
     cac_tbec_hop_le = [x for x in ds_tbec if x is not None]
     tb_ec = sum(cac_tbec_hop_le) / len(cac_tbec_hop_le) if cac_tbec_hop_le else 0.0
@@ -215,8 +214,8 @@ def xuat_bao_cao_streamlit(du_lieu_vu, stt_vu, danh_sach_ten_chi_so_chon):
         col4.metric("Số Ngày Canh Tác", f"{so_ngay} ngày")
     
     st.markdown("<br>", unsafe_allow_html=True)
-    # ---------------------------------------------------------
 
+    # BIỂU ĐỒ TOÀN VỤ
     fig = make_subplots(
         rows=2, cols=1, 
         shared_xaxes=True, 
@@ -239,7 +238,7 @@ def xuat_bao_cao_streamlit(du_lieu_vu, stt_vu, danh_sach_ten_chi_so_chon):
         fig.add_trace(go.Bar(x=x_gd, y=y_gd, name=f'GĐ {gd} : {len(x_gd)} ngày', marker_color=mau_sac_gd[i % len(mau_sac_gd)]), row=2, col=1)
 
     fig.update_layout(
-        height=750, 
+        height=650, 
         template="plotly_white", 
         hovermode="x unified", 
         margin=dict(l=30, r=30, t=60, b=20), 
@@ -249,15 +248,15 @@ def xuat_bao_cao_streamlit(du_lieu_vu, stt_vu, danh_sach_ten_chi_so_chon):
     )
     
     fig.update_xaxes(tickfont=dict(color="black", size=12), showgrid=False)
-    fig.update_yaxes(title_text="<b>Tổng phút</b>", secondary_y=False, row=1, col=1, showgrid=False, tickfont=dict(color="black"))
-    fig.update_yaxes(title_text="<b>Chỉ số EC</b>", secondary_y=True, row=1, col=1, showgrid=False, tickfont=dict(color="black"))
-    fig.update_yaxes(title_text="<b>Giá trị</b>", row=2, col=1, showgrid=False, tickfont=dict(color="black"))
+    fig.update_yaxes(title_text="<b>Tổng phút</b>", secondary_y=False, row=1, col=1, showgrid=False)
+    fig.update_yaxes(title_text="<b>Chỉ số EC</b>", secondary_y=True, row=1, col=1, showgrid=False)
+    fig.update_yaxes(title_text="<b>Giá trị</b>", row=2, col=1, showgrid=False)
 
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-    # ---------------------------------------------------------
-    # PHẦN THÊM MỚI/CẬP NHẬT: VẼ BIỂU ĐỒ RIÊNG CHO TỪNG GIAI ĐOẠN
-    # ---------------------------------------------------------
+    # =========================================================
+    # BIỂU ĐỒ CHI TIẾT TỪNG GIAI ĐOẠN (Đã tinh chỉnh kích thước & logic)
+    # =========================================================
     st.markdown("---")
     st.markdown("#### TỔNG KẾT CHI TIẾT THEO GIAI ĐOẠN")
     
@@ -272,148 +271,125 @@ def xuat_bao_cao_streamlit(du_lieu_vu, stt_vu, danh_sach_ten_chi_so_chon):
     data_gd = [d for d in du_lieu_vu if d['giai_doan'] == chon_gd]
     
     if data_gd:
-        # 1. Khởi tạo biểu đồ riêng cho Giai đoạn đang chọn
         nhan_gd = [d['nhan_ngay'] for d in data_gd]
-        phut_gd = [d['phut'] for d in data_gd]
-        lan_gd = [d['so_lan'] for d in data_gd]
-        tbec_gd = [d['tbec'] if d['tbec'] > 0 else None for d in data_gd]
-        ec_yc_gd = [d['ec_yc'] if d['ec_yc'] > 0 else None for d in data_gd]
-
+        
+        # Lấy chỉ số ưu tiên (chỉ số đầu tiên được chọn)
+        khoa_uu_tien = MAP_CHI_SO[danh_sach_ten_chi_so_chon[0]] if danh_sach_ten_chi_so_chon else 'phut'
+        
         fig_gd = make_subplots(specs=[[{"secondary_y": True}]])
         
-        # Cột Số phút tưới
+        # Định nghĩa bộ data vẽ
+        map_data_traces = {
+            'phut': {'y': [d['phut'] for d in data_gd], 'name': 'Số Phút Tưới', 'color': '#2ecc71', 'is_ec_group': False},
+            'tbec': {'y': [d['tbec'] if d['tbec'] > 0 else None for d in data_gd], 'name': 'TBEC Thực tế', 'color': '#e74c3c', 'is_ec_group': True},
+            'ec_yc': {'y': [d['ec_yc'] if d['ec_yc'] > 0 else None for d in data_gd], 'name': 'EC Yêu Cầu', 'color': '#9b59b6', 'is_ec_group': True},
+            'tbph': {'y': [d['tbph'] if d['tbph'] > 0 else None for d in data_gd], 'name': 'TBpH Thực tế', 'color': '#34495e', 'is_ec_group': True}
+        }
+        
+        # 1. ĐƯA CHỈ SỐ ƯU TIÊN LÊN DẠNG CỘT (BAR) - Trục Y chính
+        trace_ut = map_data_traces.get(khoa_uu_tien, map_data_traces['phut'])
         fig_gd.add_trace(go.Bar(
-            x=nhan_gd, y=phut_gd, 
-            name='Số Phút Tưới', 
-            marker_color='#2ecc71', opacity=0.8
+            x=nhan_gd, y=trace_ut['y'],
+            name=f"{trace_ut['name']} (Ưu tiên)",
+            marker_color=trace_ut['color'], opacity=0.85
         ), secondary_y=False)
         
-        # Đường Số lần tưới
+        # Luôn thêm Số Lần Tưới vào trục chính để theo dõi song song
         fig_gd.add_trace(go.Scatter(
-            x=nhan_gd, y=lan_gd, 
+            x=nhan_gd, y=[d['so_lan'] for d in data_gd],
             name='Số Lần Tưới', mode='lines+markers',
             line=dict(color='#f1c40f', width=2, dash='dash')
         ), secondary_y=False)
 
-        # Đường TBEC Thực tế
-        fig_gd.add_trace(go.Scatter(
-            x=nhan_gd, y=tbec_gd, 
-            name='TBEC Thực tế', mode='lines+markers',
-            line=dict(color='#e74c3c', width=3)
-        ), secondary_y=True)
-        
-        # Đường EC Yêu cầu
-        fig_gd.add_trace(go.Scatter(
-            x=nhan_gd, y=ec_yc_gd, 
-            name='EC Yêu Cầu', mode='lines',
-            line=dict(color='#9b59b6', width=2, dash='dot')
-        ), secondary_y=True)
+        # 2. CÁC CHỈ SỐ CÒN LẠI TỰ ĐỘNG CHUYỂN THÀNH ĐƯỜNG (LINE) - Trục Y phụ
+        for k, v in map_data_traces.items():
+            if k == khoa_uu_tien:
+                continue
+            # Đưa lên trục secondary_y
+            fig_gd.add_trace(go.Scatter(
+                x=nhan_gd, y=v['y'],
+                name=v['name'], mode='lines+markers' if v['is_ec_group'] else 'lines',
+                line=dict(color=v['color'], width=2.5 if k == 'tbec' else 2, 
+                          dash='dot' if k == 'ec_yc' else 'solid')
+            ), secondary_y=True)
 
+        # Điều chỉnh chiều cao hạ xuống 350 để biểu đồ gọn gàng, không bị quá to
         fig_gd.update_layout(
-            title=f"<b>Biểu đồ Chi tiết Giai đoạn {chon_gd} (Thời gian tưới, Số lần & Chỉ số EC)</b>",
-            height=400,
+            title=f"<b>Biểu đồ Giai đoạn {chon_gd} (Ưu tiên dạng cột: {danh_sach_ten_chi_so_chon[0]})</b>",
+            height=350,
             template="plotly_white",
             hovermode="x unified",
             margin=dict(l=30, r=30, t=50, b=20),
             legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1)
         )
         fig_gd.update_xaxes(showgrid=False)
-        fig_gd.update_yaxes(title_text="<b>Thời gian (Phút) / Số Lần</b>", secondary_y=False, showgrid=False)
-        fig_gd.update_yaxes(title_text="<b>Chỉ số EC</b>", secondary_y=True, showgrid=False)
+        fig_gd.update_yaxes(title_text="<b>Giá trị trục chính (Cột)</b>", secondary_y=False, showgrid=False)
+        fig_gd.update_yaxes(title_text="<b>Giá trị chỉ số phụ (Đường)</b>", secondary_y=True, showgrid=False)
 
-        # Hiển thị biểu đồ giai đoạn lên Streamlit
         st.plotly_chart(fig_gd, use_container_width=True, config={'displayModeBar': False})
 
-        # 2. Xử lý logic hiển thị Bảng dữ liệu tương ứng bên dưới biểu đồ giai đoạn
+        # BẢNG DỮ LIỆU CHI TIẾT
         df_gd = pd.DataFrame(data_gd)
         df_gd = df_gd[['ngay', 'nhan_ngay', 'so_lan', 'phut', 'tbec', 'tbph', 'ec_yc', 'giai_doan']]
         df_gd.rename(columns={
-            'ngay': 'Ngày',
-            'nhan_ngay': 'Nhãn Ngày',
-            'so_lan': 'Số Lần Tưới',
-            'phut': 'Số Phút',
-            'tbec': 'TBEC Thực',
-            'tbph': 'TBpH',
-            'ec_yc': 'EC Yêu Cầu',
-            'giai_doan': 'Giai Đoạn'
+            'ngay': 'Ngày', 'nhan_ngay': 'Nhãn Ngày', 'so_lan': 'Số Lần Tưới',
+            'phut': 'Số Phút', 'tbec': 'TBEC Thực', 'tbph': 'TBpH',
+            'ec_yc': 'EC Yêu Cầu', 'giai_doan': 'Giai Đoạn'
         }, inplace=True)
 
         so_ngay_gd = len(df_gd)
-        tb_lan = df_gd['Số Lần Tưới'].mean()
-        tb_phut = df_gd['Số Phút'].mean()
-        tb_tbec = df_gd['TBEC Thực'].mean()
-        tb_tbph = df_gd['TBpH'].mean()
-        tb_ec_yc = df_gd['EC Yêu Cầu'].mean()
-
         df_summary = pd.DataFrame([{
-            'Ngày': 'TRUNG BÌNH/TỔNG',
-            'Nhãn Ngày': f'{so_ngay_gd} ngày',
-            'Số Lần Tưới': round(tb_lan, 1),
-            'Số Phút': round(tb_phut, 1),
-            'TBEC Thực': round(tb_tbec, 2),
-            'TBpH': round(tb_tbph, 2),
-            'EC Yêu Cầu': round(tb_ec_yc, 2),
+            'Ngày': 'TRUNG BÌNH/TỔNG', 'Nhãn Ngày': f'{so_ngay_gd} ngày',
+            'Số Lần Tưới': round(df_gd['Số Lần Tưới'].mean(), 1),
+            'Số Phút': round(df_gd['Số Phút'].mean(), 1),
+            'TBEC Thực': round(df_gd['TBEC Thực'].mean(), 2),
+            'TBpH': round(df_gd['TBpH'].mean(), 2),
+            'EC Yêu Cầu': round(df_gd['EC Yêu Cầu'].mean(), 2),
             'Giai Đoạn': chon_gd
         }])
 
         df_hien_thi = pd.concat([df_gd, df_summary], ignore_index=True)
-
+        
         map_cot_hien_thi = {
             'Tổng thời gian tưới (Phút)': 'Số Phút',
             'TBEC Thực tế': 'TBEC Thực',
-            'EC Yêu cầu': 'EC Yêu Cầu'
+            'EC Yêu cầu': 'EC Yêu Cầu',
+            'Chỉ số pH thực tế': 'TBpH'
         }
-        
-        danh_sach_cot_to_dam = [map_cot_hien_thi[ten] for ten in danh_sach_ten_chi_so_chon]
+        danh_sach_cot_to_dam = [map_cot_hien_thi[ten] for ten in danh_sach_ten_chi_so_chon if ten in map_cot_hien_thi]
 
         def highlight_table(df):
             df_style = pd.DataFrame('', index=df.index, columns=df.columns)
-            css_dong_cuoi = 'font-weight: bold; background-color: #ecf0f1; color: #2c3e50; font-size: 18px !important;'
-            df_style.iloc[-1, :] = css_dong_cuoi
-            
+            df_style.iloc[-1, :] = 'font-weight: bold; background-color: #ecf0f1; color: #2c3e50; font-size: 16px !important;'
             for cot in danh_sach_cot_to_dam:
                 if cot in df_style.columns:
                     for idx in range(len(df_style) - 1): 
                         df_style.loc[idx, cot] = 'font-weight: bold; color: #d35400; background-color: #fef9e7;'
-                    
-                    css_giao_cat = 'font-weight: bold; background-color: #ecf0f1; color: #d35400; font-size: 18px !important;'
-                    df_style.iloc[-1, df_style.columns.get_loc(cot)] = css_giao_cat
-                
+                    df_style.iloc[-1, df_style.columns.get_loc(cot)] = 'font-weight: bold; background-color: #ecf0f1; color: #d35400; font-size: 16px !important;'
             return df_style
 
-        format_mapping = {
-            'Số Lần Tưới': lambda x: f"{x:g}" if isinstance(x, (int, float)) else x,
-            'Số Phút': lambda x: f"{x:g}" if isinstance(x, (int, float)) else x,
-            'TBEC Thực': lambda x: f"{x:g}" if isinstance(x, (int, float)) else x,
-            'TBpH': lambda x: f"{x:g}" if isinstance(x, (int, float)) else x,
-            'EC Yêu Cầu': lambda x: f"{x:g}" if isinstance(x, (int, float)) else x
-        }
-
-        chi_so_chuoi = " + ".join(danh_sach_cot_to_dam)
-        st.caption(f"Chi tiết lịch sử tưới trong **Giai đoạn {chon_gd}** (Cột **{chi_so_chuoi}** đang được bôi sáng do là điều kiện AND):")
+        format_mapping = {c: (lambda x: f"{x:g}" if isinstance(x, (int, float)) else x) for c in ['Số Lần Tưới', 'Số Phút', 'TBEC Thực', 'TBpH', 'EC Yêu Cầu']}
         st.dataframe(df_hien_thi.style.format(format_mapping).apply(highlight_table, axis=None), use_container_width=True, hide_index=True)
-
 
 # ==========================================
 # KHỞI TẠO APP
 # ==========================================
-st.set_page_config(page_title="Hệ Thống Phân Tích", page_icon="", layout="wide")
+st.set_page_config(page_title="Hệ Thống Phân Tích", layout="wide")
 
 if 'da_bat_dau' not in st.session_state:
     st.session_state['da_bat_dau'] = False
 
 with st.sidebar:
     st.header("TẢI FILE & CẤU HÌNH")
-    
     file_ng = st.file_uploader("1. File: Lich nho giotj.json", type=['json'])
     file_cp = st.file_uploader("2. File: châm phân trung gian.json", type=['json'])
     
     st.divider()
-    
     stt_khu = st.text_input("STT Khu (VD: 1, 2...):", value="1")
     
     st.markdown("**Phân chia Giai đoạn kết hợp (AND) theo:**")
     
+    # Render danh sách check chọn chỉ số điều kiện
     ten_chi_so_chon = []
     for ten_chi_so in MAP_CHI_SO.keys():
         mac_dinh = True if ten_chi_so in ['EC Yêu cầu', 'TBEC Thực tế'] else False
@@ -421,14 +397,12 @@ with st.sidebar:
             ten_chi_so_chon.append(ten_chi_so)
     
     dict_sai_so_cai_dat = {}
-    
     if ten_chi_so_chon:
         st.markdown("**Cài đặt sai số riêng cho từng chỉ số:**")
         for ten in ten_chi_so_chon:
             khoa = MAP_CHI_SO[ten]
-            default_val = 15.0 if khoa == 'phut' else 0.20
+            default_val = 15.0 if khoa == 'phut' else (6.5 if khoa == 'tbph' else 0.20)
             step_val = 1.0 if khoa == 'phut' else 0.05
-            
             dict_sai_so_cai_dat[khoa] = st.number_input(f"- Sai số {ten}:", value=default_val, step=step_val)
     else:
         st.warning("Vui lòng chọn ít nhất 1 chỉ số để phân chia Giai đoạn!")
@@ -438,28 +412,6 @@ with st.sidebar:
         st.session_state['da_bat_dau'] = True
 
 st.title("HỆ THỐNG PHÂN TÍCH GIAI ĐOẠN ĐỘNG")
-
-# CHÈN CSS ĐỂ TÙY CHỈNH GIAO DIỆN NÚT TÍCH (RADIO)
-st.markdown(
-    """
-    <style>
-    div[role="radiogroup"] label p {
-        font-size: 18px !important; 
-        font-weight: 500 !important;
-    }
-    div[role="radiogroup"] {
-        gap: 15px 30px !important; 
-        justify-content: flex-start;
-    }
-    /* Chỉnh CSS Metric Dashboard */
-    div[data-testid="metric-container"] {
-        background-color: transparent;
-        padding: 5px;
-    }
-    </style>
-    """, 
-    unsafe_allow_html=True
-)
 
 if st.session_state['da_bat_dau']:
     if not ten_chi_so_chon:
@@ -471,72 +423,21 @@ if st.session_state['da_bat_dau']:
             st.error(f"Không tìm thấy dữ liệu hợp lệ cho Khu {stt_khu}.")
         else:
             danh_sach_khoa = [MAP_CHI_SO[ten] for ten in ten_chi_so_chon]
-            
             danh_sach_tuy_chon = []
             map_thu_tu_vu = {} 
             
             for i, vu in enumerate(du_lieu_cac_vu_tho):
                 ngay_dau_str = vu[0]['ngay'].strftime('%d/%m/%Y')
                 ngay_cuoi_str = vu[-1]['ngay'].strftime('%d/%m/%Y')
-                so_ngay = len(vu)
-                
-                ten_hien_thi = f"Vụ {i+1}: {ngay_dau_str} ➔ {ngay_cuoi_str} ({so_ngay} ngày)"
+                ten_hien_thi = f"Vụ {i+1}: {ngay_dau_str} ➔ {ngay_cuoi_str} ({len(vu)} ngày)"
                 danh_sach_tuy_chon.append(ten_hien_thi)
                 map_thu_tu_vu[ten_hien_thi] = i + 1 
                 
-            nhan_tuy_chinh = "Tra cứu khoảng ngày tùy chỉnh"
-            danh_sach_tuy_chon.append(nhan_tuy_chinh)
+            che_do_xem = st.radio(label="Chọn nội dung xem", options=danh_sach_tuy_chon, horizontal=True, label_visibility="collapsed")
             
-            che_do_xem = st.radio(
-                label="Chọn nội dung xem", 
-                options=danh_sach_tuy_chon, 
-                horizontal=True,
-                label_visibility="collapsed" 
-            )
-            
-            if che_do_xem != nhan_tuy_chinh:
-                stt_vu_chon = map_thu_tu_vu[che_do_xem]
-                
-                data_vu = copy.deepcopy(du_lieu_cac_vu_tho[stt_vu_chon - 1])
-                ket_qua_gd = tinh_toan_giai_doan_dong(data_vu, danh_sach_khoa, dict_sai_so_cai_dat)
-                xuat_bao_cao_streamlit(ket_qua_gd, stt_vu_chon, ten_chi_so_chon)
-                
-            else:
-                st.markdown("### LỌC DỮ LIỆU THEO NGÀY TÙY CHỌN")
-                tat_ca_ngay = [d for vu in du_lieu_cac_vu_tho for d in vu]
-                ngay_min, ngay_max = tat_ca_ngay[0]['ngay'], tat_ca_ngay[-1]['ngay']
-                
-                if 'ngay_bat_dau_custom' not in st.session_state:
-                    st.session_state['ngay_bat_dau_custom'] = ngay_min
-                if 'ngay_ket_thuc_custom' not in st.session_state:
-                    st.session_state['ngay_ket_thuc_custom'] = ngay_max
-                
-                col1, col2 = st.columns(2)
-                ngay_bat_dau = col1.date_input("Từ ngày:", value=st.session_state['ngay_bat_dau_custom'], min_value=ngay_min, max_value=ngay_max)
-                ngay_ket_thuc = col2.date_input("Đến ngày:", value=st.session_state['ngay_ket_thuc_custom'], min_value=ngay_min, max_value=ngay_max)
-                
-                st.session_state['ngay_bat_dau_custom'] = ngay_bat_dau
-                st.session_state['ngay_ket_thuc_custom'] = ngay_ket_thuc
-                
-                if ngay_bat_dau > ngay_ket_thuc:
-                    st.error("Lỗi: 'Từ ngày' không được lớn hơn 'Đến ngày'.")
-                else:
-                    du_lieu_tuy_chinh_cac_vu = []
-                    for vu in du_lieu_cac_vu_tho:
-                        vu_da_loc = [d for d in vu if ngay_bat_dau <= d['ngay'] <= ngay_ket_thuc]
-                        if len(vu_da_loc) >= SO_NGAY_TOI_THIEU_VU:
-                            du_lieu_tuy_chinh_cac_vu.append(vu_da_loc)
-                    
-                    if not du_lieu_tuy_chinh_cac_vu:
-                        st.warning(f"Trong khoảng thời gian bạn chọn, không có chuỗi ngày liên tục nào đạt đủ {SO_NGAY_TOI_THIEU_VU} ngày để tạo thành 1 Vụ hợp lệ.")
-                    else:
-                        for i, vu_custom in enumerate(du_lieu_tuy_chinh_cac_vu, 1):
-                            data_custom = copy.deepcopy(vu_custom)
-                            ket_qua_gd_custom = tinh_toan_giai_doan_dong(data_custom, danh_sach_khoa, dict_sai_so_cai_dat)
-                            
-                            ten_vu_hien_thi = f"Tùy Chỉnh {i}" if len(du_lieu_tuy_chinh_cac_vu) > 1 else "Tùy Chỉnh"
-                            xuat_bao_cao_streamlit(ket_qua_gd_custom, ten_vu_hien_thi, ten_chi_so_chon)
-                            st.markdown("<br>", unsafe_allow_html=True)
-
+            stt_vu_chon = map_thu_tu_vu[che_do_xem]
+            data_vu = copy.deepcopy(du_lieu_cac_vu_tho[stt_vu_chon - 1])
+            ket_qua_gd = tinh_toan_giai_doan_dong(data_vu, danh_sach_khoa, dict_sai_so_cai_dat)
+            xuat_bao_cao_streamlit(ket_qua_gd, stt_vu_chon, ten_chi_so_chon)
     else:
         st.info("Hãy tải đủ 2 file JSON ở cột bên trái và bấm Chạy Báo Cáo.")
